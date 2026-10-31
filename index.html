@@ -834,6 +834,29 @@ button.prog-row:hover { background: var(--surface-2); }
 /* 修正 */
 .cc-ring span { display: flex; align-items: center; justify-content: center; gap: 1px; }
 .prose :not(pre) > code { white-space: normal; overflow-wrap: anywhere; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+
+/* 跳过 / 标为已学 */
+.head-count { font-size: 12.5px; font-weight: 400; margin-left: 6px; }
+.timeline li { display: flex; align-items: center; gap: 6px; }
+.timeline li > a { flex: 1; min-width: 0; }
+.tl-toggle {
+  flex: none; height: 28px; padding: 0 10px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-2); font-size: 12.5px; font-weight: 500;
+  opacity: 0; transition: opacity .12s, background .12s, color .12s, border-color .12s;
+}
+.timeline li:hover .tl-toggle, .tl-toggle:focus-visible { opacity: 1; }
+.tl-toggle:hover { border-color: var(--border-strong); color: var(--text); background: var(--surface-2); }
+.tl-toggle.on { color: var(--text-3); }
+@media (hover: none), (max-width: 960px) { .tl-toggle { opacity: 1; } }
+.timeline li.skipped .tl-dot { background: var(--surface-3); border-color: var(--surface-3); color: var(--text-2); }
+.timeline li.skipped:not(:last-child) a::after { background: var(--border); }
+.skip-lesson { color: var(--text-3); }
+@media (max-width: 640px) { .timeline li a .chev { display: none; } }
+@media (max-width: 640px) {
+  .timeline li a .pill { display: none; }
+  .timeline li a { padding: 12px 4px; gap: 12px; }
+  .tl-toggle { height: 26px; padding: 0 8px; font-size: 12px; }
+}
 </style>
 </head>
 <body>
@@ -1449,7 +1472,7 @@ function viewHome(main) {
 
   let cont = null;
   const parseLast = S.last && S.last.hash.match(/^#\/l\/(\w+)\/(\d+)/);
-  if (parseLast && MOD[parseLast[1]] && MOD[parseLast[1]].lessons[+parseLast[2]]) cont = { mid: parseLast[1], i: +parseLast[2], resume: true };
+  if (parseLast && MOD[parseLast[1]] && MOD[parseLast[1]].lessons[+parseLast[2]] && !lessonState(parseLast[1], +parseLast[2]).done) cont = { mid: parseLast[1], i: +parseLast[2], resume: true };
   else { const nl = nextLesson(); if (nl) cont = { mid: nl.mid, i: nl.i, resume: false }; }
 
   main.append(pageHead({
@@ -1527,19 +1550,40 @@ function viewModule(main, mid) {
     aside: nl >= 0 ? `<a class="btn primary lg" href="#/l/${mid}/${nl}">${nl ? '继续学习' : '开始学习'}${icon('arrowRight', 16)}</a>`
       : `<a class="btn primary lg" href="#/drill/${mid}">去刷题${icon('arrowRight', 16)}</a>`,
   }));
+  const allDone = nl < 0;
 
-  const grid = h(`<div class="two-col"><section class="card lessons-card"><div class="card-head"><h3>课程</h3><span class="muted">${s.lessonsDone}/${s.lessons} 已学</span></div><ol class="timeline"></ol></section><aside class="side-col"></aside></div>`);
+  const grid = h(`<div class="two-col"><section class="card lessons-card"><div class="card-head"><h3>课程 <span class="muted head-count">${s.lessonsDone}/${s.lessons} 已学</span></h3><button class="btn ghost sm mark-all">${allDone ? `${icon('reset', 14)}全部重新学` : `${icon('skip', 14)}全部标为已学`}</button></div><ol class="timeline"></ol></section><aside class="side-col"></aside></div>`);
   m.lessons.forEach((l, i) => {
     const ls = lessonState(mid, i);
     const prac = m.questions.filter(q => q.lesson === i);
     const pracDone = prac.filter(q => qs(q.id).n).length;
     const isNext = i === nl;
-    $('.timeline', grid).append(h(`<li class="${ls.done ? 'done' : ''} ${isNext ? 'next' : ''}"><a href="#/l/${mid}/${i}">
-      <span class="tl-dot">${ls.done ? icon('check', 14) : i + 1}</span>
-      <span class="tl-body"><b>${esc(l.title)}</b><span>${l.cards.length} 步${prac.length ? ` · 课后练习 ${pracDone}/${prac.length}` : ''}</span></span>
+    $('.timeline', grid).append(h(`<li class="${ls.done ? 'done' : ''} ${ls.skipped ? 'skipped' : ''} ${isNext ? 'next' : ''}"><a href="#/l/${mid}/${i}">
+      <span class="tl-dot">${ls.done ? (ls.skipped ? icon('skip', 14) : icon('check', 14)) : i + 1}</span>
+      <span class="tl-body"><b>${esc(l.title)}</b><span>${ls.skipped ? '已跳过 · ' : ''}${l.cards.length} 步${prac.length ? ` · 课后练习 ${pracDone}/${prac.length}` : ''}</span></span>
       ${isNext ? `<span class="pill accent">${ls.card ? '继续' : '下一节'}</span>` : ''}
-      <span class="chev">${icon('chevronRight', 16)}</span></a></li>`));
+      <span class="chev">${icon('chevronRight', 16)}</span></a>
+      <button class="tl-toggle ${ls.done ? 'on' : ''}" data-i="${i}" title="${ls.done ? '撤销，改回未学' : '已经学过，跳过这一节'}">${ls.done ? '撤销' : '标为已学'}</button></li>`));
   });
+  $('.timeline', grid).addEventListener('click', e => {
+    const b = e.target.closest('.tl-toggle'); if (!b) return;
+    const i = +b.dataset.i;
+    const done = lessonState(mid, i).done;
+    setLessonDone(mid, i, !done);
+    toast(done ? `已改回未学：${m.lessons[i].title}` : `已标为学过：${m.lessons[i].title}`);
+    route();
+  });
+  $('.mark-all', grid).onclick = async () => {
+    if (allDone) {
+      if (!(await confirmBox(`把「${esc(m.short)}」的 ${m.lessons.length} 节课都改回未学？<br>做过的题和错题记录不受影响。`, '改回未学'))) return;
+      m.lessons.forEach((_, i) => setLessonDone(mid, i, false));
+      toast('已全部改回未学');
+    } else {
+      m.lessons.forEach((_, i) => { if (!lessonState(mid, i).done) setLessonDone(mid, i, true); });
+      toast(`「${m.short}」已全部标为学过`);
+    }
+    route();
+  };
   const side = $('.side-col', grid);
   side.append(h(`<section class="card stat-card">
     <div class="card-head"><h3>刷题单</h3></div>
@@ -1572,6 +1616,7 @@ function viewLesson(main, mid, li) {
       <a class="icon-btn" href="#/m/${mid}" aria-label="返回模块">${icon('x', 20)}</a>
       <div class="focus-progress"><div class="segs"></div></div>
       <span class="focus-count"></span>
+      ${st.done ? '' : `<button class="btn ghost sm skip-lesson" title="已经学过，直接跳到下一节">${icon('skip', 14)}跳过本节</button>`}
     </div>
     <div class="lesson-title"><div class="eyebrow">${esc(m.short)} · 第 ${li + 1} 节</div><h1>${esc(l.title)}</h1></div>
     <div class="card-stage"></div>
@@ -1600,7 +1645,7 @@ function viewLesson(main, mid, li) {
     if (dir) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
   function finish() {
-    st.done = true; st.card = 0; save();
+    st.done = true; delete st.skipped; st.card = 0; save();
     if (practice.length) {
       startSession({
         title: `课后练习 · ${l.title}`, qids: practice.map(q => q.id), mode: 'practice',
@@ -1610,6 +1655,13 @@ function viewLesson(main, mid, li) {
       go(nextLessonHash(mid, li).hash);
     }
   }
+  const skipBtn = $('.skip-lesson', wrap);
+  if (skipBtn) skipBtn.onclick = () => {
+    setLessonDone(mid, li, true);
+    const nx = nextLessonHash(mid, li);
+    toast(`已跳过「${l.title}」，想重学可以在模块页撤销`);
+    go(nx.hash);
+  };
   prevBtn.onclick = () => idx > 0 && show(idx - 1, -1);
   nextBtn.onclick = () => idx < l.cards.length - 1 ? show(idx + 1, 1) : finish();
   viewKeys = e => {
@@ -1618,6 +1670,14 @@ function viewLesson(main, mid, li) {
     else if (e.key === 'Escape') go(`#/m/${mid}`);
   };
   show(idx);
+}
+// 标记一节为已学（跳过）或改回未学
+function setLessonDone(mid, li, done) {
+  const key = lessonKey(mid, li);
+  const st = S.lessons[key] || (S.lessons[key] = {});
+  if (done) { if (!st.done) { st.done = true; st.skipped = true; } st.card = 0; }
+  else { delete st.done; delete st.skipped; st.card = 0; }
+  save();
 }
 function nextLessonHash(mid, li) {
   const m = MOD[mid];
