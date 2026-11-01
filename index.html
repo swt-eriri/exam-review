@@ -857,6 +857,49 @@ button.prog-row:hover { background: var(--surface-2); }
   .timeline li a { padding: 12px 4px; gap: 12px; }
   .tl-toggle { height: 26px; padding: 0 8px; font-size: 12px; }
 }
+
+/* ============================================================
+ * 底部固定操作栏：提交 / 下一题 永远在同一个位置
+ * ============================================================ */
+main.reading, main.exam { padding-bottom: 140px; }
+.answer-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--surface) 96%, transparent); backdrop-filter: saturate(1.4) blur(12px);
+  border-top: 1px solid var(--border); box-shadow: 0 -6px 20px rgba(16, 18, 27, .05);
+  transition: background .2s, border-color .2s;
+}
+.answer-bar.ok { background: var(--ok-soft); border-top-color: var(--ok-border); }
+.answer-bar.no { background: var(--bad-soft); border-top-color: var(--bad-border); }
+.ab-inner { max-width: 704px; margin: 0 auto; display: flex; align-items: center; gap: 14px; min-height: 44px; }
+.ab-status { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; animation: fade .2s; }
+.ab-status:empty { visibility: hidden; }
+.ab-ic { width: 32px; height: 32px; flex: none; border-radius: 50%; display: grid; place-items: center; color: #fff; }
+.answer-bar.ok .ab-ic { background: var(--ok-solid); }
+.answer-bar.no .ab-ic { background: var(--bad-solid); }
+.ab-text { display: flex; flex-direction: column; line-height: 1.35; min-width: 0; }
+.ab-text b { font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.answer-bar.ok .ab-text b { color: var(--ok); }
+.answer-bar.no .ab-text b { color: var(--bad); }
+.ab-text small { font-size: 12px; color: var(--text-3); }
+.ab-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.ab-actions .fb-actions { margin: 0; flex-wrap: nowrap; }
+.ab-actions .btn.primary, .ab-actions .btn.success { min-width: 132px; height: 44px; font-size: 15px; border-radius: 11px; }
+.ab-actions .btn.secondary, .ab-actions .btn.ghost { height: 44px; }
+/* 模拟考：操作栏和题目列对齐，右侧留给答题卡 */
+.answer-bar.exam .ab-inner { max-width: 1084px; display: grid; grid-template-columns: minmax(0, 1fr) 264px; }
+.ab-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+@media (max-width: 1100px) { .answer-bar.exam .ab-inner { display: flex; } .ab-row { flex: 1; } }
+@media (max-width: 960px) {
+  .answer-bar { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
+  .ab-text small { display: none; }
+  .ab-actions .btn.primary, .ab-actions .btn.success { min-width: 0; padding: 0 18px; }
+  .ab-status:empty { display: none; }
+  .ab-status:empty + .ab-actions { flex: 1; justify-content: flex-end; }
+  .ab-status:empty + .ab-actions .btn.primary { flex: 1; }
+  .ab-status:empty + .ab-actions .fb-actions { flex: 1; }
+  .ab-status:empty + .ab-actions .fb-actions .btn { flex: 1; }
+}
 </style>
 </head>
 <body>
@@ -1757,7 +1800,7 @@ function choiceQ(q, el, ctl, opts) {
   let submitBtn;
   if (!opts.exam) {
     submitBtn = h(`<button class="btn primary" disabled>提交答案<kbd class="on-btn">Enter</kbd></button>`);
-    actions.append(submitBtn);
+    (opts.bar || actions).append(submitBtn);
     submitBtn.onclick = submit;
   }
   const isRight = () => { const ans = new Set(q.answer); return picked.size === ans.size && [...picked].every(i => ans.has(i)); };
@@ -1801,7 +1844,7 @@ function shortQ(q, el, ctl, opts) {
   ta.oninput = () => opts.onChange && opts.onChange(ta.value);
   if (opts.exam) return;
   const btn = h(`<button class="btn primary">写完了，对照得分点</button>`);
-  actions.append(btn);
+  (opts.bar || actions).append(btn);
   btn.onclick = () => showKeypoints();
   function showKeypoints(readonly) {
     btn.remove();
@@ -1812,8 +1855,8 @@ function shortQ(q, el, ctl, opts) {
     const ref = md(q.ref); ref.classList.add('prose');
     $('details', fb).append(ref);
     if (readonly) { $('details', fb).open = true; return; }
-    const self = h(`<div class="fb-actions"><button class="btn secondary" data-v="0">没写全，算没掌握</button><button class="btn success" data-v="1">${icon('check', 16)}要点都写到了</button></div>`);
-    fb.append(self);
+    const self = h(`<div class="fb-actions"><button class="btn secondary" data-v="0">没写全</button><button class="btn success" data-v="1">${icon('check', 16)}要点都写到了</button></div>`);
+    (opts.bar || fb).append(self);
     const boxes = $$('input', fb);
     $$('button', self).forEach(b => b.onclick = () => {
       const ok = b.dataset.v === '1';
@@ -1854,7 +1897,7 @@ function codeQ(q, el, ctl, opts) {
   const runBtn = h(`<button class="btn primary">${icon('play', 14)}${blind && !opts.exam ? '提交（盲写模式，只有一次机会）' : '运行测试'}</button>`);
   const resetBtn = h(`<button class="btn secondary">${icon('reset', 15)}恢复初始代码</button>`);
   const solBtn = h(`<button class="btn ghost">${icon('eye', 15)}看参考答案</button>`);
-  if (!(opts.exam && blind)) actions.append(runBtn);
+  if (!(opts.exam && blind)) (opts.bar || actions).append(runBtn);
   actions.append(resetBtn);
   if (!opts.exam) actions.append(solBtn);
 
@@ -1979,6 +2022,12 @@ function startSession(opt) {
   go('#/run');
 }
 
+function barResultText(q, ok) {
+  if (q.type === 'single' || q.type === 'multi') return ok ? '回答正确' : `正确答案是 ${q.answer.map(i => LETTERS[i]).join('、')}`;
+  if (q.type === 'code') return ok ? '全部测试通过' : '这题记作没做出来';
+  return ok ? '要点都答到了' : '已放进错题本';
+}
+
 function viewRun(main) {
   if (!SESSION || !SESSION.qids.length) { go('#/'); return; }
   const ss = SESSION;
@@ -1990,9 +2039,11 @@ function viewRun(main) {
       <span class="focus-count"></span>
     </div>
     <div class="session-head"><span class="eyebrow">${esc(ss.title)}</span><span class="score"></span></div>
-    <div class="q-stage"></div></div>`);
+    <div class="q-stage"></div>
+    <div class="answer-bar"><div class="ab-inner"><div class="ab-status"></div><div class="ab-actions"></div></div></div></div>`);
   main.append(wrap);
   const stage = $('.q-stage', wrap), meter = $('.meter i', wrap);
+  const bar = $('.answer-bar', wrap), barStatus = $('.ab-status', wrap), barActs = $('.ab-actions', wrap);
 
   function paintHead() {
     const vals = Object.values(ss.results);
@@ -2008,13 +2059,20 @@ function viewRun(main) {
     paintHead();
     const nextBtn = h(`<button class="btn primary next-btn">${ss.i + 1 < ss.qids.length ? '下一题' : '查看结果'}${icon('arrowRight', 16)}</button>`);
     const skipBtn = h(`<button class="btn ghost skip-btn">${icon('skip', 15)}跳过</button>`);
+    bar.className = 'answer-bar';
+    barStatus.innerHTML = ''; barActs.innerHTML = '';
+    barActs.append(skipBtn);
     const ctl = questionCard(q, {
       label: qs(q.id).n ? `做过 ${qs(q.id).n} 次` : '新题',
+      bar: barActs,
       onAnswered(ok) {
         ss.results[q.id] = ok;
         record(q.id, ok);
-        skipBtn.remove();
-        $('.q-actions', ctl.el).append(nextBtn);
+        // 操作栏原位换成「下一题」，并直接显示对错
+        bar.className = 'answer-bar ' + (ok ? 'ok' : 'no');
+        barStatus.innerHTML = `<span class="ab-ic">${icon(ok ? 'check' : 'x', 16)}</span><span class="ab-text"><b>${barResultText(q, ok)}</b><small>解析在上方，可以往上看</small></span>`;
+        barActs.innerHTML = '';
+        barActs.append(nextBtn);
         nextBtn.focus({ preventScroll: true });
         paintHead();
         renderNav();
@@ -2022,7 +2080,6 @@ function viewRun(main) {
     });
     skipBtn.onclick = () => { ss.i++; show(); };
     nextBtn.onclick = () => { ss.i++; show(); };
-    $('.q-actions', ctl.el).append(skipBtn);
     stage.innerHTML = '';
     ctl.el.classList.add('in-right');
     stage.append(ctl.el);
@@ -2036,6 +2093,7 @@ function viewRun(main) {
 
   function summary() {
     viewKeys = null;
+    bar.remove();
     meter.style.width = '100%';
     $('.focus-count', wrap).textContent = '完成';
     const ids = Object.keys(ss.results);
@@ -2263,6 +2321,7 @@ function viewMockPaper(main, id) {
       <div class="focus-bar"><a class="icon-btn" href="#/mock" aria-label="暂时离开">${icon('x', 20)}</a><div class="focus-progress"><div class="meter lg"><i></i></div></div><span class="focus-count"></span></div>
       <div class="exam-q"></div>
     </section>
+    <div class="answer-bar exam"><div class="ab-inner"><div class="ab-row"><div class="ab-flag"></div><div class="ab-actions"></div></div></div></div>
     <aside class="sheet-card">
       <div class="sheet-head"><b>答题卡</b><span class="muted sheet-prog"></span></div>
       <div class="sheet-grid"></div>
@@ -2294,15 +2353,15 @@ function viewMockPaper(main, id) {
       exam: true, label: `第 ${it.no} 题`, value: mk.ans[it.qid],
       onChange(v) { mk.ans[it.qid] = v; save(); paintGrid(); },
     });
-    const flag = h(`<button class="btn ghost ${mk.flags[it.qid] ? 'flagged' : ''}">${icon('flag', 15)}${mk.flags[it.qid] ? '取消标记' : '标记，待会再看'}</button>`);
+    const flag = h(`<button class="btn ghost ${mk.flags[it.qid] ? 'flagged' : ''}">${icon('flag', 15)}${mk.flags[it.qid] ? '取消标记' : '标记待查'}</button>`);
     flag.onclick = () => { mk.flags[it.qid] = !mk.flags[it.qid]; save(); show(cur); };
     const prev = h(`<button class="btn secondary" ${i ? '' : 'disabled'}>${icon('arrowLeft', 16)}上一题</button>`);
     const next = h(`<button class="btn primary">${i + 1 < mk.items.length ? '下一题' : '去交卷'}${icon('arrowRight', 16)}</button>`);
     prev.onclick = () => show(i - 1);
     next.onclick = () => i + 1 < mk.items.length ? show(i + 1) : submit();
-    const acts = $('.q-actions', ctl.el);
-    acts.prepend(flag);
-    acts.append(h('<span class="spacer"></span>'), prev, next);
+    $('.ab-flag', layout).innerHTML = ''; $('.ab-flag', layout).append(flag);
+    const acts = $('.answer-bar .ab-actions', layout);
+    acts.innerHTML = ''; acts.append(prev, next);
     qbox.innerHTML = ''; qbox.append(ctl.el);
     paintGrid();
     window.scrollTo({ top: 0 });
@@ -2318,6 +2377,7 @@ function viewMockPaper(main, id) {
     if (!(await confirmBox(left ? `还有 <b>${left}</b> 题没答，确定交卷吗？<br>没答的题算错。` : '全部答完了，确定交卷吗？', '交卷', '再检查一下'))) return;
     const btn = $('.submit-btn', layout);
     btn.disabled = true; btn.textContent = '判卷中…';
+    $('.answer-bar', layout).remove();
     qbox.innerHTML = `<div class="card grading"><div class="spinner lg"></div><h3>正在判卷</h3><p class="muted">${mk.items.some(it => QS[it.qid].type === 'code') ? '代码题需要跑一下测试，稍等几秒' : ''}</p></div>`;
     viewKeys = null;
     mk.result = {}; mk.testOut = {};
